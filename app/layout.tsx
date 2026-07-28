@@ -1,11 +1,6 @@
-import { ClerkProvider } from "@clerk/nextjs"
-import { shadcn } from "@clerk/ui/themes"
 import { Geist, Geist_Mono } from "next/font/google"
 
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
-import { Toaster } from "@/components/ui/sonner"
-import { AuthControls } from "@/components/auth-controls"
 import { cn } from "@/lib/utils"
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" })
@@ -32,13 +27,7 @@ export default function RootLayout({
       )}
     >
       <body suppressHydrationWarning>
-        <ClerkProvider appearance={{ theme: shadcn }} taskUrls={{ 'choose-organization': '/choose-organization' }}>
-          <AuthControls />
-          <ThemeProvider>
-            {children}
-            <Toaster />
-          </ThemeProvider>
-        </ClerkProvider>
+        {children}
       </body>
     </html>
   )
