@@ -38,6 +38,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
 } from "@/components/ui/sidebar"
+import { useRouter } from "next/navigation"
 import { createWorkflowAction } from "@/features/workflows/actions"
 
 type Workflow = {
@@ -107,7 +108,7 @@ function WorkflowList({
   onCreate,
 }: {
   workflows: Workflow[]
-  onSelect?: () => void
+  onSelect?: (id: string) => void
   onCreate?: () => void
 }) {
   return (
@@ -134,7 +135,7 @@ function WorkflowList({
               <SidebarMenuButton
                 tooltip={workflow.name}
                 className="group/menu-item"
-                onClick={onSelect}
+                onClick={() => onSelect?.(workflow.id)}
               >
                 <WorkflowIcon className="size-4 shrink-0" />
                 <span className="truncate">{workflow.name}</span>
@@ -154,6 +155,7 @@ export function WorkflowSidebar() {
   const { user } = useUser()
   const { organization } = useOrganization()
   const { state, toggleSidebar } = useSidebar()
+  const router = useRouter()
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [workflows, setWorkflows] = useState<Workflow[]>([])
@@ -223,6 +225,7 @@ export function WorkflowSidebar() {
           {state === "expanded" ? (
             <WorkflowList
               workflows={workflows}
+              onSelect={(id) => router.push(`/workflows/${id}`)}
               onCreate={() => setDialogOpen(true)}
             />
           ) : (
@@ -240,7 +243,10 @@ export function WorkflowSidebar() {
                 <PopoverContent className="w-64 p-2" align="start">
                   <WorkflowList
                     workflows={workflows}
-                    onSelect={() => setPopoverOpen(false)}
+                    onSelect={(id) => {
+                      setPopoverOpen(false)
+                      router.push(`/workflows/${id}`)
+                    }}
                     onCreate={() => {
                       setPopoverOpen(false)
                       setDialogOpen(true)
