@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -53,16 +53,26 @@ type Workflow = {
 function CreateWorkflowDialog({
   open,
   onOpenChange,
+  onSuccess,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSuccess?: (workflowId: string) => void
 }) {
   const [name, setName] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async () => {
-    if (!name.trim()) return
-    await createWorkflowAction(name.trim())
-    onOpenChange(false)
+    if (!name.trim() || isSubmitting) return
+    
+    setIsSubmitting(true)
+    try {
+      const result = await createWorkflowAction(name.trim())
+      onOpenChange(false)
+      onSuccess?.(result.workflowId)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -159,30 +169,58 @@ export function WorkflowSidebar() {
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [workflows, setWorkflows] = useState<Workflow[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleWorkflowCreated = (workflowId: string) => {
+    router.push(`/workflows/${workflowId}`)
+  }
+
+  const fetchWorkflows = useCallback(async () => {
+    if (!organization) return
+
+    try {
+      const response = await fetch("/api/workflows")
+      console.log("Fetching workflows:", response.status, response.ok)
+      
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Workflows data:", data)
+        setWorkflows(data)
+      } else {
+        const errorText = await response.text()
+        console.error("Failed to fetch workflows:", response.status, errorText)
+        setError(`Failed to load workflows: ${response.status}`)
+      }
+    } catch (err) {
+      console.error("Failed to fetch workflows:", err)
+      setError("Failed to load workflows")
+    }
+  }, [organization])
 
   useEffect(() => {
     if (!organization) return
 
     let cancelled = false
 
-    async function loadWorkflows() {
-      try {
-        const response = await fetch("/api/workflows")
-        if (response.ok && !cancelled) {
-          const data = await response.json()
-          setWorkflows(data)
-        }
-      } catch {
-        if (!cancelled) console.error("Failed to fetch workflows")
+    async function doFetch() {
+      setIsLoading(true)
+      setError(null)
+
+      await fetchWorkflows()
+
+      if (!cancelled) {
+        setIsLoading(false)
       }
     }
 
-    loadWorkflows()
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    void doFetch()
 
     return () => {
       cancelled = true
     }
-  }, [organization])
+  }, [fetchWorkflows])
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
@@ -222,7 +260,22 @@ export function WorkflowSidebar() {
 
       <SidebarContent>
         <SidebarGroup className="w-full">
-          {state === "expanded" ? (
+          {isLoading ? (
+            <div className="flex items-center justify-center p-4">
+              <p className="text-xs text-muted-foreground">Loading workflows...</p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center p-4 gap-2">
+              <p className="text-xs text-destructive">{error}</p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => organization && fetchWorkflows()}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : state === "expanded" ? (
             <WorkflowList
               workflows={workflows}
               onSelect={(id) => router.push(`/workflows/${id}`)}
@@ -259,7 +312,11 @@ export function WorkflowSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <CreateWorkflowDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <CreateWorkflowDialog 
+        open={dialogOpen} 
+        onOpenChange={setDialogOpen}
+        onSuccess={handleWorkflowCreated}
+      />
 
       <SidebarFooter className="border-t">
         <SidebarMenu>

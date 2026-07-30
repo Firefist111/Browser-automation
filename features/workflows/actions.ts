@@ -2,7 +2,6 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { tasks } from "@trigger.dev/sdk";
 import type { helloWorldTask } from "@/trigger/example";
 import { createWorkflow } from "./data";
@@ -17,7 +16,8 @@ export async function createWorkflowAction(name: string) {
   const workflow = await createWorkflow(orgId, name);
 
   revalidatePath("/", "layout");
-  redirect(`/workflows/${workflow.id}`);
+
+  return { workflowId: workflow.id };
 }
 
 export async function runWorkflowAction(workflowId: string) {
