@@ -1,66 +1,167 @@
 "use client"
 
-import { useCallback, useSyncExternalStore } from "react"
-import { useTheme } from "next-themes"
+import { useCallback, useEffect, useRef } from "react"
 import {
   ReactFlow,
   Background,
-  Controls,
-  MiniMap,
-  addEdge,
-  useNodesState,
-  useEdgesState,
-  type Connection,
-  type Edge,
   type Node,
+  type Edge,
+  type Connection,
+  type OnNodesChange,
+  type OnEdgesChange,
+  type NodeChange,
+  type EdgeChange,
 } from "@xyflow/react"
-import "@xyflow/react/dist/style.css"
+import { LiveObject } from "@liveblocks/client"
+import { useUpdateMyPresence, useOthers, useStorage, useMutation } from "@liveblocks/react/suspense"
 import { StepNode } from "./step-nodes"
-
-const nodeStyles = {
-  padding: "10px 20px",
-  borderRadius: "8px",
-  borderWidth: "2px",
-  borderStyle: "solid",
-  borderColor: "hsl(var(--border))",
-  fontSize: "14px",
-  fontWeight: 500,
-}
-
-const initialNodes: Node[] = [
-  {
-    id: "start",
-    type: "step",
-    data: { type: "start",kind:"trigger",title:"Start",values:{}},
-    position: { x: 0, y: 0 }
-  }
-]
-
-const initialEdges: Edge[] = []
-
-const emptySubscribe = () => () => {}
+import { UserCursor } from "@/components/liveblocks/user-cursor"
+import type { StepNodeData } from "../nodes/node-registry"
 
 const nodeTypes = {
   step: StepNode,
 }
 
+const COLORS = [
+  "#FF5F56",
+  "#FFBD2E",
+  "#27C93F",
+  "#4A90D9",
+  "#9B59B6",
+  "#E67E22",
+  "#1ABC9C",
+  "#E74C3C",
+]
+
 export function Canvas() {
-  const { resolvedTheme } = useTheme()
-  const mounted = useSyncExternalStore(
-    emptySubscribe,
-    () => true,
-    () => false
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const updateMyPresence = useUpdateMyPresence()
+  const others = useOthers()
+
+  // Read nodes and edges from Liveblocks storage
+  const storageNodes = useStorage((root) => root.nodes)
+  const storageEdges = useStorage((root) => root.edges)
+
+  // Convert Liveblocks storage to React Flow format
+  const nodes: Node<StepNodeData, "step">[] = (storageNodes ?? []).map((node) => ({
+    id: node.id,
+    type: node.type as "step",
+    position: node.position,
+    data: node.data as StepNodeData,
+  }))
+
+  const edges: Edge[] = (storageEdges ?? []).map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+  }))
+
+  // Mutations to update Liveblocks storage
+  const updateNodes = useMutation(
+    ({ storage }, changes: NodeChange[]) => {
+      const liveNodes = storage.get("nodes")
+      for (const change of changes) {
+        if (change.type === "position" && change.position) {
+          const node = liveNodes.find((n) => n.get("id") === change.id)
+          if (node) {
+            node.set("position", change.position)
+          }
+        } else if (change.type === "remove") {
+          const index = liveNodes.findIndex((n) => n.get("id") === change.id)
+          if (index !== -1) {
+            liveNodes.delete(index)
+          }
+        }
+      }
+    },
+    []
   )
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+
+  const updateEdges = useMutation(
+    ({ storage }, changes: EdgeChange[]) => {
+      const liveEdges = storage.get("edges")
+      for (const change of changes) {
+        if (change.type === "remove") {
+          const index = liveEdges.findIndex((e) => e.get("id") === change.id)
+          if (index !== -1) {
+            liveEdges.delete(index)
+          }
+        }
+      }
+    },
+    []
+  )
+
+  const addNewEdge = useMutation(
+    ({ storage }, connection: Connection) => {
+      const liveEdges = storage.get("edges")
+      const newEdge = new LiveObject({
+        id: `e-${connection.source}-${connection.target}-${Date.now()}`,
+        source: connection.source!,
+        target: connection.target!,
+      })
+      liveEdges.push(newEdge)
+    },
+    []
+  )
+
+  const onNodesChange: OnNodesChange = useCallback(
+    (changes) => {
+      updateNodes(changes)
+    },
+    [updateNodes]
+  )
+
+  const onEdgesChange: OnEdgesChange = useCallback(
+    (changes) => {
+      updateEdges(changes)
+    },
+    [updateEdges]
+  )
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
-    [setEdges]
+    (connection: Connection) => {
+      addNewEdge(connection)
+    },
+    [addNewEdge]
   )
 
+  // Track mouse movement to update presence
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) return
+
+      updateMyPresence({
+        cursor: {
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top,
+        },
+      })
+    },
+    [updateMyPresence]
+  )
+
+  // Clear cursor when leaving the canvas
+  const handlePointerLeave = useCallback(() => {
+    updateMyPresence({ cursor: null })
+  }, [updateMyPresence])
+
+  // Clear cursor on unmount
+  useEffect(() => {
+    return () => {
+      updateMyPresence({ cursor: null })
+    }
+  }, [updateMyPresence])
+
   return (
-    <div className="h-full w-full">
+    <div
+      ref={containerRef}
+      className="relative h-full w-full"
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -68,13 +169,27 @@ export function Canvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={nodeTypes}
-        colorMode={mounted && resolvedTheme === "dark" ? "dark" : "light"}
         fitView
+        proOptions={{ hideAttribution: true }}
       >
         <Background />
-        <Controls />
-        <MiniMap />
       </ReactFlow>
+
+      {/* Render other users' cursors */}
+      {others.map((other) => {
+        if (other.presence.cursor == null) return null
+
+        const color = COLORS[other.connectionId % COLORS.length]
+        return (
+          <UserCursor
+            key={other.connectionId}
+            x={other.presence.cursor.x}
+            y={other.presence.cursor.y}
+            color={color}
+            name={other.info.name}
+          />
+        )
+      })}
     </div>
   )
 }
