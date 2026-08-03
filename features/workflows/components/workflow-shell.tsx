@@ -1,5 +1,6 @@
 "use client"
 
+import { ReactFlowProvider } from "@xyflow/react"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Canvas } from "./canvas"
 import { RightSidebar } from "./right-sidebar"
@@ -12,6 +13,7 @@ interface WorkflowShellProps {
 export function WorkflowShell({ workflowId }: WorkflowShellProps) {
   return (
     <Room roomId={workflowId}>
+      <ReactFlowProvider>
       <ResizablePanelGroup orientation="horizontal" className="size-full">
         <ResizablePanel minSize="30rem">
           <ResizablePanelGroup orientation="vertical">
@@ -31,6 +33,7 @@ export function WorkflowShell({ workflowId }: WorkflowShellProps) {
           <RightSidebar workflowId={workflowId} />
         </ResizablePanel>
       </ResizablePanelGroup>
+      </ReactFlowProvider>
     </Room>
   )
 }

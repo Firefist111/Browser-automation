@@ -8,6 +8,7 @@ declare global {
       info: {
         name: string;
         avatar?: string;
+        orgId?: string;
       };
     };
     Presence: {
