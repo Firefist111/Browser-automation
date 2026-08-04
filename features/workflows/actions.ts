@@ -3,10 +3,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { tasks } from "@trigger.dev/sdk";
+import { runs, tasks } from "@trigger.dev/sdk";
 import { Liveblocks } from "@liveblocks/node";
 import type { helloWorldTask } from "@/trigger/example";
-import { createWorkflow, deleteWorkflow } from "./data";
+import { createWorkflow, deleteWorkflow, saveWorkflowGraph } from "./data";
+import { WorkflowGraph } from "@/lib/db/schema";
 
 const liveblocks = new Liveblocks({
   secret: process.env.LIVEBLOCKS_SECRET_KEY!,
@@ -26,11 +27,16 @@ export async function createWorkflowAction(name: string) {
 }
 
 export async function deleteWorkflowAction(workflowId: string) {
-  const { userId } = await auth();
+  const { userId , orgId } = await auth();
 
   if (!userId) {
     throw new Error("Not authenticated");
   }
+
+  if(!orgId){
+    throw new Error("No organization selected");
+  }
+
 
   // Delete the workflow row from the database
   await deleteWorkflow(workflowId);
@@ -42,20 +48,40 @@ export async function deleteWorkflowAction(workflowId: string) {
   redirect("/");
 }
 
-export async function runWorkflowAction(workflowId: string) {
-  const { userId } = await auth();
+export async function runWorkflowAction({workflowId,graph} : {workflowId: string, graph: WorkflowGraph}) {
+  const { userId, orgId } = await auth()
 
   if (!userId) {
-    throw new Error("Not authenticated");
+    throw new Error("Not authenticated")
   }
 
+  if (!orgId) {
+    throw new Error("No organization selected")
+  }
+
+  await saveWorkflowGraph({ orgId, id: workflowId, graph });
   const handle = await tasks.trigger<typeof helloWorldTask>("hello-world", {
     message: `Running workflow: ${workflowId}`,
   });
 
   revalidatePath(`/workflows/${workflowId}`);
-
+  
   return {
     runId: handle.id,
   };
+}
+
+
+export async function  cancelWorkflowRunAction(runId: string) {
+  const { userId, orgId } = await auth()
+
+  if (!userId) {
+    throw new Error("Not authenticated")
+  }
+
+  if (!orgId) {
+    throw new Error("No organization selected")
+  }
+
+  await runs.cancel(runId);
 }

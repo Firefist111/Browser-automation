@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
-import { workflows } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { workflows,WorkflowGraph } from "@/lib/db/schema";
+import { and, eq } from "drizzle-orm";
+import { validateGraph } from "./lib/validate-graph";
+
 
 export async function createWorkflow(orgId: string, name: string) {
   const [workflow] = await db
@@ -26,4 +28,21 @@ export async function getWorkflowById(id: string) {
 
 export async function deleteWorkflow(id: string) {
   await db.delete(workflows).where(eq(workflows.id, id));
+}
+
+export async function saveWorkflowGraph({orgId ,id, graph } : {
+orgId: string,
+id: string,
+graph: WorkflowGraph
+}){
+
+const problems = validateGraph(graph)
+
+if(problems.length > 0){
+  throw new Error(`Invalid workflow graph: ${problems.join(", ")}`);
+}
+await db
+.update(workflows)
+.set({ graph })
+.where(and(eq(workflows.id, id),eq(workflows.orgId, orgId)))
 }
