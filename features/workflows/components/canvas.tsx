@@ -1,9 +1,10 @@
 "use client"
 
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ReactFlow,
   Background,
+  useOnSelectionChange,
   type Node,
   type Edge,
   type Connection,
@@ -43,19 +44,41 @@ export function Canvas() {
   const storageNodes = useStorage((root) => root.nodes)
   const storageEdges = useStorage((root) => root.edges)
 
-  // Convert Liveblocks storage to React Flow format
-  const nodes: Node<StepNodeData, "step">[] = (storageNodes ?? []).map((node) => ({
-    id: node.id,
-    type: node.type as "step",
-    position: node.position,
-    data: node.data as StepNodeData,
-  }))
+  // Track the selected node ID so we can preserve selection when
+  // Liveblocks storage updates cause React Flow to re-render.
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined)
 
-  const edges: Edge[] = (storageEdges ?? []).map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-  }))
+  const onSelectionChange = useCallback(
+    ({ nodes }: { nodes: Node[] }) => {
+      setSelectedId(nodes[0]?.id)
+    },
+    []
+  )
+
+  useOnSelectionChange({ onChange: onSelectionChange })
+
+  // Convert Liveblocks storage to React Flow format, preserving selection
+  const nodes: Node<StepNodeData, "step">[] = useMemo(
+    () =>
+      (storageNodes ?? []).map((node) => ({
+        id: node.id,
+        type: node.type as "step",
+        position: node.position,
+        data: node.data as StepNodeData,
+        selected: node.id === selectedId,
+      })),
+    [storageNodes, selectedId]
+  )
+
+  const edges: Edge[] = useMemo(
+    () =>
+      (storageEdges ?? []).map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+      })),
+    [storageEdges]
+  )
 
   // Mutations to update Liveblocks storage
   const updateNodes = useMutation(

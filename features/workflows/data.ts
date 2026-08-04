@@ -23,3 +23,7 @@ export async function getWorkflowById(id: string) {
 
   return workflow ?? null;
 }
+
+export async function deleteWorkflow(id: string) {
+  await db.delete(workflows).where(eq(workflows.id, id));
+}

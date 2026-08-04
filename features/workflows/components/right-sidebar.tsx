@@ -1,11 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { MoreHorizontal, Play, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 import { LiveObject } from "@liveblocks/client"
-import { useMutation } from "@liveblocks/react/suspense"
-import { useReactFlow } from "@xyflow/react"
+import { useMutation, useStorage } from "@liveblocks/react/suspense"
+import { useReactFlow, useOnSelectionChange } from "@xyflow/react"
+import { deleteWorkflowAction } from "@/features/workflows/actions"
 
 import {
   Accordion,
@@ -22,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { ResizablePanel } from "@/components/ui/resizable"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
@@ -31,6 +34,7 @@ import {
   type NodeDefinition,
   type NodeField,
   type NodeType,
+  type StepNodeData,
   type StepNodeKind,
   type StepNodeType,
 } from "@/features/workflows/nodes/node-registry"
@@ -86,7 +90,8 @@ function Section({
 // Editor tab — edits the fields of the selected node.
 // ---------------------------------------------------------------------------
 
-// A single editor field for a node property.
+// A single editor field for a node property. Renders as a multi-line
+// textarea when the field is marked `multiline`, otherwise a single-line input.
 function FieldInput({
   field,
   value,
@@ -96,7 +101,17 @@ function FieldInput({
   value: string
   onChange: (value: string) => void
 }) {
-  // TODO: support a multiline field variant (textarea).
+  if (field.multiline) {
+    return (
+      <Textarea
+        id={field.key}
+        value={value}
+        placeholder={field.placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    )
+  }
+
   return (
     <Input
       id={field.key}
@@ -109,6 +124,18 @@ function FieldInput({
 
 // The Editor tab: one input per field on the selected node, or an empty state.
 function Inspector({ node }: { node: StepNodeType | undefined }) {
+  const updateNodeData = useMutation(
+    ({ storage }, nodeId: string, values: Record<string, string>) => {
+      const liveNodes = storage.get("nodes")
+      const liveNode = liveNodes.find((n) => n.get("id") === nodeId)
+      if (liveNode) {
+        const data = liveNode.get("data")
+        liveNode.set("data", { ...data, values })
+      }
+    },
+    []
+  )
+
   if (!node) {
     return (
       <Section title="Editor">
@@ -135,8 +162,10 @@ function Inspector({ node }: { node: StepNodeType | undefined }) {
                 field={field}
                 value={values[field.key] ?? ""}
                 onChange={(value) => {
-                  // TODO: save the edit back onto the selected node.
-                  void value
+                  updateNodeData(node.id, {
+                    ...values,
+                    [field.key]: value,
+                  })
                 }}
               />
             </div>
@@ -209,7 +238,18 @@ function Palette({ onAdd }: { onAdd: (type: NodeType) => void }) {
 // ---------------------------------------------------------------------------
 
 // The "..." menu for workflow-level actions.
-function ActionsMenu() {
+function ActionsMenu({ workflowId }: { workflowId: string }) {
+  const router = useRouter()
+
+  const handleDelete = async () => {
+    try {
+      await deleteWorkflowAction(workflowId)
+      router.push("/")
+    } catch {
+      toast.error("Failed to delete workflow")
+    }
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -221,9 +261,7 @@ function ActionsMenu() {
         <DropdownMenuItem
           variant="destructive"
           className="text-xs [&_svg:not([class*='size-'])]:size-3.5"
-          onSelect={() => {
-            // TODO: delete the workflow, then navigate away.
-          }}
+          onSelect={handleDelete}
         >
           <Trash2 />
           Delete workflow
@@ -265,7 +303,9 @@ export function RightSidebar({ workflowId }: { workflowId: string }) {
 
       // Only one trigger node is allowed
       if (def.kind === "trigger") {
-        const hasTrigger = liveNodes.some((n) => n.get("data").kind === "trigger")
+        const hasTrigger = liveNodes.some(
+          (n) => n.get("data").kind === "trigger"
+        )
         if (hasTrigger) {
           toast.error("Only one trigger node is allowed")
           return
@@ -299,10 +339,30 @@ export function RightSidebar({ workflowId }: { workflowId: string }) {
     [screenToFlowPosition]
   )
 
-  // TODO: read the currently selected node from React Flow.
-  const selected: StepNodeType | undefined = undefined
+  // Track the selected node ID from React Flow selection changes.
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined)
 
-  // TODO: auto-switch to the Editor tab when the selection changes.
+  const onSelectionChange = useCallback(
+    ({ nodes }: { nodes: StepNodeType[] }) => {
+      setSelectedId(nodes[0]?.id)
+    },
+    []
+  )
+
+  useOnSelectionChange({ onChange: onSelectionChange })
+
+  // Read the selected node data from Liveblocks storage.
+  const selected = useStorage((root) => {
+    if (!selectedId) return undefined
+    const node = root.nodes.find((n) => n.id === selectedId)
+    if (!node) return undefined
+    return {
+      id: node.id,
+      type: node.type as "step",
+      position: node.position,
+      data: node.data as StepNodeData,
+    } as StepNodeType
+  })
 
   return (
     <ResizablePanel
@@ -312,9 +372,13 @@ export function RightSidebar({ workflowId }: { workflowId: string }) {
       maxSize="36rem"
       groupResizeBehavior="preserve-pixel-size"
     >
-      <Tabs value={tab} onValueChange={setTab} className="size-full gap-0">
+      <Tabs
+        value={tab}
+        onValueChange={setTab}
+        className="size-full gap-0"
+      >
         <div className="flex items-center justify-between border-b border-border p-2">
-          <ActionsMenu />
+          <ActionsMenu workflowId={workflowId} />
           <RunButton />
         </div>
         <TabsList className="m-2 w-fit bg-background">

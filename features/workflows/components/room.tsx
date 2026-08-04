@@ -14,7 +14,7 @@ export function Room({
   }: { children: ReactNode ,roomId : string}) {
   return (
     <LiveblocksProvider
-    throttle={16}
+      throttle={32}
       authEndpoint="/api/liveblocks-auth"
     >
       <RoomProvider
