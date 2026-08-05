@@ -165,7 +165,9 @@ function WorkflowList({
 export function WorkflowSidebar() {
   const { user } = useUser()
   const { organization } = useOrganization()
-  const { isLoaded, setActive, userMemberships } = useOrganizationList()
+  const { isLoaded, setActive, userMemberships } = useOrganizationList({
+    userMemberships: true,
+  })
   const { state, toggleSidebar } = useSidebar()
   const router = useRouter()
   const pathname = usePathname()
@@ -174,7 +176,6 @@ export function WorkflowSidebar() {
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(false)
   const [workflowError, setWorkflowError] = useState<string | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
 
   // Extract active workflow ID from pathname (e.g., /workflows/abc-123)
   const activeWorkflowId = pathname?.startsWith("/workflows/")
@@ -185,7 +186,7 @@ export function WorkflowSidebar() {
   useEffect(() => {
     if (!isLoaded) return
     if (organization) return
-    if (userMemberships.data.length === 0) return
+    if (!userMemberships.data || userMemberships.data.length === 0) return
 
     const firstMembership = userMemberships.data[0]
     if (firstMembership) {
@@ -205,11 +206,11 @@ export function WorkflowSidebar() {
       setIsLoadingWorkflows(true)
       setWorkflowError(null)
 
-      // Exponential backoff delay for 401 race conditions
-      const delay = Math.min(1000 * Math.pow(2, loadWorkflowsRetryCount), 10000)
-
       try {
-        await new Promise((resolve) => setTimeout(resolve, delay))
+        if (loadWorkflowsRetryCount > 0) {
+          const delay = Math.min(1000 * Math.pow(2, loadWorkflowsRetryCount - 1), 10000)
+          await new Promise((resolve) => setTimeout(resolve, delay))
+        }
 
         const response = await fetch("/api/workflows")
 

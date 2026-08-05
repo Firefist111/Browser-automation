@@ -1,5 +1,3 @@
-import { ClerkProvider } from "@clerk/nextjs"
-import { shadcn } from "@clerk/ui/themes"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { WorkflowSidebar } from "@/components/dashboard/workflow-sidebar"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -12,7 +10,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }>) {
   return (
-    <ClerkProvider appearance={{ theme: shadcn }} taskUrls={{ 'choose-organization': '/choose-organization' }}>
+    <>
       <TooltipProvider>
         <SidebarProvider defaultOpen={true}>
           <WorkflowSidebar />
@@ -24,6 +22,6 @@ export default function DashboardLayout({
       <ThemeProvider>
         <Toaster />
       </ThemeProvider>
-    </ClerkProvider>
+    </>
   )
 }

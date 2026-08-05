@@ -95,11 +95,17 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
-    onSelect(api)
+
     api.on("reInit", onSelect)
     api.on("select", onSelect)
+    
+    // Defer initial state sync to avoid calling setState synchronously in effect body
+    Promise.resolve().then(() => {
+      onSelect(api)
+    })
 
     return () => {
+      api?.off("reInit", onSelect)
       api?.off("select", onSelect)
     }
   }, [api, onSelect])

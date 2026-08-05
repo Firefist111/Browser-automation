@@ -7,7 +7,7 @@ import { validateGraph } from "./lib/validate-graph";
 export async function createWorkflow(orgId: string, name: string) {
   const [workflow] = await db
     .insert(workflows)
-    .values({ orgId, name })
+    .values({ orgId, name, graph: { nodes: [], edges: [] } })
     .returning();
 
   return workflow;
@@ -26,8 +26,19 @@ export async function getWorkflowById(id: string) {
   return workflow ?? null;
 }
 
-export async function deleteWorkflow(id: string) {
-  await db.delete(workflows).where(eq(workflows.id, id));
+export async function getWorkflow(workflowId: string,orgId: string) {
+  const [workflow] = await db
+    .select()
+    .from(workflows)
+    .where(and(eq(workflows.id, workflowId),eq(workflows.orgId, orgId)));
+
+  return workflow ?? null;
+}
+
+
+
+export async function deleteWorkflow(orgId: string, id: string) {
+  await db.delete(workflows).where(and(eq(workflows.id, id), eq(workflows.orgId, orgId)));
 }
 
 export async function saveWorkflowGraph({orgId ,id, graph } : {

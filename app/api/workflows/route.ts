@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getWorkflowsByOrg } from "@/features/workflows/data";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const { orgId } = await auth();
 

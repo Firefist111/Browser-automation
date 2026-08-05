@@ -1,13 +1,17 @@
 "use client"
 
 import { useCallback, useState } from "react"
-import { MoreHorizontal, Play, Trash2 } from "lucide-react"
+import { Loader2Icon, MoreHorizontal, Play, SquareIcon, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { LiveObject } from "@liveblocks/client"
 import { useMutation, useStorage } from "@liveblocks/react/suspense"
 import { useReactFlow, useOnSelectionChange } from "@xyflow/react"
-import { deleteWorkflowAction } from "@/features/workflows/actions"
+import {
+  deleteWorkflowAction,
+  runWorkflowAction,
+  cancelWorkflowRunAction,
+} from "@/features/workflows/actions"
 
 import {
   Accordion,
@@ -272,17 +276,82 @@ function ActionsMenu({ workflowId }: { workflowId: string }) {
 }
 
 // Kicks off a run of the current workflow.
-function RunButton() {
+function RunButton({ workflowId }: { workflowId: string }) {
+  const [isRunning, setIsRunning] = useState(false)
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+
+  const storageNodes = useStorage((root) => root.nodes)
+  const storageEdges = useStorage((root) => root.edges)
+
+  const handleRun = async () => {
+    if (isRunning && activeRunId) {
+      try {
+        await cancelWorkflowRunAction(activeRunId)
+        toast.info("Workflow run cancelled")
+        setActiveRunId(null)
+      } catch (err) {
+        toast.error("Failed to cancel workflow run")
+      } finally {
+        setIsRunning(false)
+      }
+      return
+    }
+
+    setIsRunning(true)
+    try {
+      const nodes = (storageNodes ?? []).map((node) => ({
+        id: node.id,
+        type: node.type as "step",
+        position: node.position,
+        data: node.data as StepNodeData,
+      }))
+
+      const edges = (storageEdges ?? []).map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+      }))
+
+      const res = await runWorkflowAction({
+        workflowId,
+        graph: { nodes, edges },
+      })
+
+      setActiveRunId(res.runId)
+      toast.success(`Workflow run triggered! (Run ID: ${res.runId})`)
+    } catch (error) {
+      console.error("Run workflow error:", error)
+      toast.error(error instanceof Error ? error.message : "Failed to run workflow")
+    } finally {
+      setIsRunning(false)
+    }
+  }
+
   return (
     <Button
       size="sm"
-      variant="secondary"
-      onClick={() => {
-        // TODO: validate the graph and run the workflow (toggle to Stop while running).
-      }}
+      variant={isRunning ? "destructive" : "secondary"}
+      onClick={handleRun}
+      disabled={isRunning && !activeRunId}
     >
-      <Play fill="primary" />
-      Run
+      {isRunning ? (
+        activeRunId ? (
+          <>
+            <SquareIcon className="size-3.5 fill-current" />
+            Stop
+          </>
+        ) : (
+          <>
+            <Loader2Icon className="size-3.5 animate-spin" />
+            Starting...
+          </>
+        )
+      ) : (
+        <>
+          <Play className="size-3.5 fill-primary text-primary" />
+          Run
+        </>
+      )}
     </Button>
   )
 }
@@ -379,7 +448,7 @@ export function RightSidebar({ workflowId }: { workflowId: string }) {
       >
         <div className="flex items-center justify-between border-b border-border p-2">
           <ActionsMenu workflowId={workflowId} />
-          <RunButton />
+          <RunButton workflowId={workflowId} />
         </div>
         <TabsList className="m-2 w-fit bg-background">
           <TabsTrigger
