@@ -46,17 +46,16 @@ async function main() {
 
     // Test 2: extract()
     console.log("\n📋 Testing extract()...");
-    const extractRes = await stagehand.extract({
-      instruction: "Extract the main heading text of this page",
-      schema: { heading: "string" },
-    });
+    const extractRes = await stagehand.extract(
+      "Extract the main heading text of this page"
+    );
     console.log("   extract result:", JSON.stringify(extractRes));
 
     // Test 3: observe()
     console.log("\n👀 Testing observe()...");
-    const observeRes = await stagehand.observe({
-      instruction: "List clickable links on this page",
-    });
+    const observeRes = await stagehand.observe(
+      "List clickable links on this page"
+    );
     console.log("   observe observations:", observeRes.length);
 
     console.log("\n=========================================");
