@@ -4,9 +4,6 @@ export default defineConfig({
   project: "proj_yowlxcmmxesbfackujnv",
   runtime: "node",
   logLevel: "log",
-  // The max compute seconds a task is allowed to run. If the task run exceeds this duration, it will be stopped.
-  // You can override this on an individual task.
-  // See https://trigger.dev/docs/runs/max-duration
   maxDuration: 3600,
   retries: {
     enabledInDev: true,
@@ -18,5 +15,21 @@ export default defineConfig({
       randomize: true,
     },
   },
-  dirs: ["features"],
+  dirs: ["features/workflows/tasks"],
+  build: {
+    external: [
+      // Stagehand and its SDK use worker threads internally
+      "@browserbasehq/stagehand",
+      "@browserbasehq/sdk",
+      // pino uses thread-stream which spawns worker threads that load lib/worker.js
+      "pino",
+      "pino-pretty",
+      "thread-stream",
+      "sonic-boom",
+      "real-require",
+      // Playwright/patchright are peer deps of Stagehand and use worker threads
+      "playwright-core",
+      "patchright-core",
+    ],
+  },
 });
