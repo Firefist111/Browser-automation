@@ -37,6 +37,11 @@ const COLORS = [
 export function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Preserve measured node dimensions across Liveblocks storage updates to prevent React Flow warning #015
+  const [nodeDimensions, setNodeDimensions] = useState<
+    Record<string, { measured?: { width?: number; height?: number } }>
+  >({})
+
   const updateMyPresence = useUpdateMyPresence()
   const others = useOthers()
 
@@ -57,17 +62,21 @@ export function Canvas() {
 
   useOnSelectionChange({ onChange: onSelectionChange })
 
-  // Convert Liveblocks storage to React Flow format, preserving selection
+  // Convert Liveblocks storage to React Flow format, preserving selection & measured dimensions
   const nodes: Node<StepNodeData, "step">[] = useMemo(
     () =>
-      (storageNodes ?? []).map((node) => ({
-        id: node.id,
-        type: node.type as "step",
-        position: node.position,
-        data: node.data as StepNodeData,
-        selected: node.id === selectedId,
-      })),
-    [storageNodes, selectedId]
+      (storageNodes ?? []).map((node) => {
+        const cached = nodeDimensions[node.id]
+        return {
+          id: node.id,
+          type: node.type as "step",
+          position: node.position,
+          data: node.data as StepNodeData,
+          selected: node.id === selectedId,
+          ...(cached ?? {}),
+        }
+      }),
+    [storageNodes, selectedId, nodeDimensions]
   )
 
   const edges: Edge[] = useMemo(
@@ -95,6 +104,11 @@ export function Canvas() {
           if (index !== -1) {
             liveNodes.delete(index)
           }
+          setNodeDimensions((prev) => {
+            const next = { ...prev }
+            delete next[change.id]
+            return next
+          })
         }
       }
     },
@@ -131,6 +145,23 @@ export function Canvas() {
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => {
+      let dimensionsChanged = false
+      let newDims: Record<string, { measured?: { width?: number; height?: number } }> | null = null
+
+      for (const change of changes) {
+        if (change.type === "dimensions" && change.dimensions) {
+          if (!newDims) newDims = {}
+          newDims[change.id] = {
+            measured: change.dimensions,
+          }
+          dimensionsChanged = true
+        }
+      }
+
+      if (dimensionsChanged && newDims) {
+        const next = newDims
+        setNodeDimensions((prev) => ({ ...prev, ...next }))
+      }
       updateNodes(changes)
     },
     [updateNodes]

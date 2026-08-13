@@ -21,8 +21,13 @@ export function validateGraph({ nodes, edges }: WorkflowGraph): string[] {
   }
   try {
     toposort(edges.map((edge) => [edge.source, edge.target]))
-  } catch {
-    problems.push("An error occurred while validating the workflow")
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (msg.includes("Cyclic") || msg.includes("cycle")) {
+      problems.push("Workflow contains a cycle (loop). Cyclic workflows are not supported.")
+    } else {
+      problems.push("Workflow contains an invalid connection cycle.")
+    }
   }
 
   return problems

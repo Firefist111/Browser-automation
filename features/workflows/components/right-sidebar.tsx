@@ -1,7 +1,14 @@
 "use client"
 
-import { useCallback, useState } from "react"
-import { Loader2Icon, MoreHorizontal, Play, SquareIcon, Trash2 } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import {
+  Loader2Icon,
+  MoreHorizontal,
+  Play,
+  SquareIcon,
+  Trash2,
+  CircleHelp,
+} from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { LiveObject } from "@liveblocks/client"
@@ -12,6 +19,7 @@ import {
   runWorkflowAction,
   cancelWorkflowRunAction,
 } from "@/features/workflows/actions"
+import { useLatestRunSteps } from "./WorkflowRunsProvider"
 
 import {
   Accordion,
@@ -42,6 +50,8 @@ import {
   type StepNodeKind,
   type StepNodeType,
 } from "@/features/workflows/nodes/node-registry"
+import { useUpstreamConnections } from "@/features/workflows/hooks/useUpstreamConnections"
+import { isValidUrl, URL_ERROR_MESSAGE } from "@/features/workflows/lib/urls"
 
 // This file builds up to the RightSidebar component exported at the bottom: a
 // header with workflow actions (delete, run), then two tabs — a Toolbar for
@@ -52,15 +62,23 @@ import {
 // Shared pieces — used by both the Toolbar and the Editor.
 // ---------------------------------------------------------------------------
 
-// The accent-colored icon chip, mirroring the node on the canvas.
-function NodeIcon({ type, className }: { type: NodeType; className?: string }) {
-  const def = nodeRegistry[type]
-  const Icon = def.icon
+// The accent-colored icon chip, mirroring the node on the canvas. Accepts any
+// node type (possibly unknown/undefined — e.g. steps recorded before type
+// tracking existed) and falls back to a neutral chip so it never crashes.
+export function NodeIcon({
+  type,
+  className,
+}: {
+  type: NodeType | (string & {})
+  className?: string
+}) {
+  const def = (nodeRegistry as Record<string, NodeDefinition>)[type]
+  const Icon = def?.icon ?? CircleHelp
   return (
     <span
       className={cn(
         "flex size-6 shrink-0 items-center justify-center rounded-md",
-        def.accent,
+        def?.accent ?? "bg-muted text-muted-foreground",
         className
       )}
     >
@@ -100,29 +118,56 @@ function FieldInput({
   field,
   value,
   onChange,
+  onFocus,
+  error,
+  errorMessage,
 }: {
   field: NodeField
   value: string
   onChange: (value: string) => void
+  onFocus?: () => void
+  error?: boolean
+  errorMessage?: string
 }) {
+  const inputClassName = cn(
+    error &&
+      "border-destructive focus-visible:border-destructive focus-visible:ring-2 focus-visible:ring-destructive/50"
+  )
+
   if (field.multiline) {
     return (
-      <Textarea
-        id={field.key}
-        value={value}
-        placeholder={field.placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      <>
+        <Textarea
+          id={field.key}
+          value={value}
+          placeholder={field.placeholder}
+          className={inputClassName}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={onFocus}
+          aria-invalid={error}
+        />
+        {error && errorMessage && (
+          <p className="text-xs text-destructive">{errorMessage}</p>
+        )}
+      </>
     )
   }
 
   return (
-    <Input
-      id={field.key}
-      value={value}
-      placeholder={field.placeholder}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <>
+      <Input
+        id={field.key}
+        value={value}
+        placeholder={field.placeholder}
+        className={inputClassName}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={onFocus}
+        aria-invalid={error}
+      />
+      {error && errorMessage && (
+        <p className="text-xs text-destructive">{errorMessage}</p>
+      )}
+    </>
   )
 }
 
@@ -140,6 +185,11 @@ function Inspector({ node }: { node: StepNodeType | undefined }) {
     []
   )
 
+  const connections = useUpstreamConnections(node?.id)
+  const [lastFocusedField, setLastFocusedField] = useState<string | undefined>(
+    undefined
+  )
+
   if (!node) {
     return (
       <Section title="Editor">
@@ -151,29 +201,79 @@ function Inspector({ node }: { node: StepNodeType | undefined }) {
   const { type, title, values } = node.data
   const def: NodeDefinition = nodeRegistry[type]
 
+  const handleFieldFocus = (fieldKey: string) => {
+    setLastFocusedField(fieldKey)
+  }
+
+  const handleChipClick = (token: string) => {
+    const targetField = lastFocusedField ?? def.fields[0]?.key
+    if (!targetField) return
+
+    updateNodeData(node.id, {
+      ...values,
+      [targetField]: (values[targetField] ?? "") + token,
+    })
+  }
+
   return (
     <Section title={title} icon={<NodeIcon type={type} />}>
       <div className="flex flex-col gap-3 p-3">
         {def.fields.length === 0 ? (
           <p className="text-xs text-muted-foreground">No properties</p>
         ) : (
-          def.fields.map((field) => (
-            <div key={field.key} className="flex flex-col gap-1.5">
-              <Label htmlFor={field.key} className="text-xs">
-                {field.label}
-              </Label>
-              <FieldInput
-                field={field}
-                value={values[field.key] ?? ""}
-                onChange={(value) => {
-                  updateNodeData(node.id, {
-                    ...values,
-                    [field.key]: value,
-                  })
-                }}
-              />
+          def.fields.map((field) => {
+            const fieldValue = values[field.key] ?? ""
+            const isUrlError =
+              type === "open-url" &&
+              field.key === "url" &&
+              fieldValue.trim() !== "" &&
+              !isValidUrl(fieldValue)
+
+            return (
+              <div key={field.key} className="flex flex-col gap-1.5">
+                <Label htmlFor={field.key} className="text-xs">
+                  {field.label}
+                </Label>
+                <FieldInput
+                  field={field}
+                  value={fieldValue}
+                  error={isUrlError}
+                  errorMessage={isUrlError ? URL_ERROR_MESSAGE : undefined}
+                  onChange={(value) => {
+                    updateNodeData(node.id, {
+                      ...values,
+                      [field.key]: value,
+                    })
+                  }}
+                  onFocus={() => handleFieldFocus(field.key)}
+                />
+              </div>
+            )
+          })
+        )}
+
+        {connections.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground">Connections</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {connections.map((conn) => {
+                const Icon = nodeRegistry[conn.nodeType].icon
+                return (
+                  <Button
+                    key={conn.token}
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-auto gap-1.5 px-2 py-1 text-xs"
+                    onClick={() => handleChipClick(conn.token)}
+                  >
+                    <Icon className="size-3" />
+                    {conn.label}
+                  </Button>
+                )
+              })}
             </div>
-          ))
+          </div>
         )}
       </div>
     </Section>
@@ -282,16 +382,17 @@ function RunButton({ workflowId }: { workflowId: string }) {
 
   const storageNodes = useStorage((root) => root.nodes)
   const storageEdges = useStorage((root) => root.edges)
+  const { isLive } = useLatestRunSteps()
 
   const handleRun = async () => {
-    if (isRunning && activeRunId) {
+    if (activeRunId) {
       try {
         await cancelWorkflowRunAction(activeRunId)
         toast.info("Workflow run cancelled")
-        setActiveRunId(null)
-      } catch (err) {
+      } catch {
         toast.error("Failed to cancel workflow run")
       } finally {
+        setActiveRunId(null)
         setIsRunning(false)
       }
       return
@@ -321,11 +422,23 @@ function RunButton({ workflowId }: { workflowId: string }) {
       toast.success(`Workflow run triggered! (Run ID: ${res.runId})`)
     } catch (error) {
       console.error("Run workflow error:", error)
-      toast.error(error instanceof Error ? error.message : "Failed to run workflow")
-    } finally {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to run workflow"
+      )
       setIsRunning(false)
     }
   }
+
+  useEffect(() => {
+    if (activeRunId && !isLive) {
+      // Defer the state reset so it doesn't run synchronously inside the effect
+      // commit phase (React 19 warns this "can trigger cascading renders").
+      queueMicrotask(() => {
+        setIsRunning(false)
+        setActiveRunId(null)
+      })
+    }
+  }, [isLive, activeRunId])
 
   return (
     <Button
@@ -441,11 +554,7 @@ export function RightSidebar({ workflowId }: { workflowId: string }) {
       maxSize="36rem"
       groupResizeBehavior="preserve-pixel-size"
     >
-      <Tabs
-        value={tab}
-        onValueChange={setTab}
-        className="size-full gap-0"
-      >
+      <Tabs value={tab} onValueChange={setTab} className="size-full gap-0">
         <div className="flex items-center justify-between border-b border-border p-2">
           <ActionsMenu workflowId={workflowId} />
           <RunButton workflowId={workflowId} />

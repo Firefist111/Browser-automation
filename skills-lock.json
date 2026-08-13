@@ -73,22 +73,28 @@
       "skillPath": "skills/neon-postgres/SKILL.md",
       "computedHash": "7cbf89e1135f27f482ca7e18bb6df15ec38307848d35364ed058fb9f5c0b7e99"
     },
+    "resend": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/resend/SKILL.md",
+      "computedHash": "b6d29c14be496cc4e29fcd9950da977ea598606a068cccd621a51e8fce499d87"
+    },
+    "trigger-agents": {
+      "source": "triggerdotdev/skills",
+      "sourceType": "github",
+      "skillPath": "trigger-agents/SKILL.md",
+      "computedHash": "skill-downloaded"
+    },
     "trigger-config": {
       "source": "triggerdotdev/skills",
       "sourceType": "github",
       "skillPath": "trigger-config/SKILL.md",
       "computedHash": "skill-downloaded"
     },
-    "trigger-tasks": {
+    "trigger-realtime": {
       "source": "triggerdotdev/skills",
       "sourceType": "github",
-      "skillPath": "trigger-tasks/SKILL.md",
-      "computedHash": "skill-downloaded"
-    },
-    "trigger-agents": {
-      "source": "triggerdotdev/skills",
-      "sourceType": "github",
-      "skillPath": "trigger-agents/SKILL.md",
+      "skillPath": "trigger-realtime/SKILL.md",
       "computedHash": "skill-downloaded"
     },
     "trigger-setup": {
@@ -97,10 +103,10 @@
       "skillPath": "trigger-setup/SKILL.md",
       "computedHash": "skill-downloaded"
     },
-    "trigger-realtime": {
+    "trigger-tasks": {
       "source": "triggerdotdev/skills",
       "sourceType": "github",
-      "skillPath": "trigger-realtime/SKILL.md",
+      "skillPath": "trigger-tasks/SKILL.md",
       "computedHash": "skill-downloaded"
     }
   }
